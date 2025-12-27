@@ -2,45 +2,46 @@ import { Handler } from "@netlify/functions";
 import axios from "axios";
 
 export const handler: Handler = async (event) => {
+  const { text, lang } = event.queryStringParameters || {};
+
+  if (!text || !lang) {
+    return {
+      statusCode: 400,
+      body: JSON.stringify({ error: "Missing parameters" }),
+    };
+  }
+
   try {
-    const { text, lang } = event.queryStringParameters || {};
-
-    if (!text || !lang) {
-      return {
-        statusCode: 400,
-        body: JSON.stringify({ error: "Missing parameters" }),
-      };
-    }
-
-    const googleTTSUrl = `https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=${lang}&q=${encodeURIComponent(
+    // Gọi đến Google TTS
+    // client=tw-ob: Client public của Google
+    // tl=ja: Target language là tiếng Nhật
+    const url = `https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=${lang}&q=${encodeURIComponent(
       text
     )}`;
 
-    // 2. Fetch binary data from Google
-    const response = await axios.get(googleTTSUrl, {
+    const response = await axios.get(url, {
+      responseType: "arraybuffer", // Quan trọng: nhận về dữ liệu nhị phân
       headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+        "User-Agent": "Mozilla/5.0",
+        "Access-Control-Allow-Origin": "*", // Giả lập trình duyệt để tránh bị chặn
       },
-      responseType: "arraybuffer", // Important for backend handling
     });
 
-    // 3. Convert to Base64 for Netlify response
-    const base64Audio = Buffer.from(response.data, "binary").toString("base64");
+    // Chuyển đổi buffer sang base64 để gửi về frontend
+    const audioBase64 = Buffer.from(response.data, "binary").toString("base64");
 
     return {
       statusCode: 200,
       headers: {
-        "Content-Type": "audio/mpeg",
-        "Access-Control-Allow-Origin": "*", // CORS Allow
+        "Content-Type": "application/json",
+        "Access-Control-Allow-Origin": "*",
       },
-      body: base64Audio,
-      isBase64Encoded: true,
+      body: JSON.stringify({
+        audioContent: `data:audio/mpeg;base64,${audioBase64}`,
+      }),
     };
-  } catch (error: any) {
-    return {
-      statusCode: 500,
-      body: JSON.stringify({ error: error.message }),
-    };
+  } catch (error) {
+    console.error(error);
+    return { statusCode: 500, body: "Error fetching audio" };
   }
 };
